@@ -1,0 +1,273 @@
+name: task-platform
+
+# Networks enforce the System A / System B separation:
+#   system-a-net : db-a, task-api, outbox-publisher (+ keycloak for JWKS)
+#   system-b-net : db-b, replica-consumer, replica-api (+ keycloak for JWKS)
+#   kafka-net    : kafka, kafka-init, outbox-publisher, replica-consumer
+# Nothing in system-a-net can resolve db-b, nothing in system-b-net can resolve db-a.
+
+x-auth-env: &auth-env
+  # Token `iss` is always the PUBLIC url; JWKS is fetched from the INTERNAL url.
+  KEYCLOAK_ISSUER: ${KEYCLOAK_PUBLIC_URL:-http://localhost:8080}/realms/taskapp
+  KEYCLOAK_JWKS_URL: ${KEYCLOAK_INTERNAL_URL:-http://keycloak:8080}/realms/taskapp/protocol/openid-connect/certs
+  ALLOWED_AZP: ${ALLOWED_AZP:-task-frontend,task-seeder}
+  CORS_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:5173}
+
+x-db-a-url: &db-a-url postgresql+psycopg://${DB_A_USER:-taskapp_a}:${DB_A_PASSWORD:-change-me-a}@db-a:5432/${DB_A_NAME:-tasks}
+x-db-b-url: &db-b-url postgresql+psycopg://${DB_B_USER:-taskapp_b}:${DB_B_PASSWORD:-change-me-b}@db-b:5432/${DB_B_NAME:-replica}
+
+x-py-health: &py-health
+  interval: 5s
+  timeout: 5s
+  retries: 20
+  start_period: 5s
+
+services:
+  # ---------------------------------------------------------------- databases
+  db-a:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${DB_A_USER:-taskapp_a}
+      POSTGRES_PASSWORD: ${DB_A_PASSWORD:-change-me-a}
+      POSTGRES_DB: ${DB_A_NAME:-tasks}
+    volumes:
+      - db-a-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    networks: [system-a-net]
+
+  db-b:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${DB_B_USER:-taskapp_b}
+      POSTGRES_PASSWORD: ${DB_B_PASSWORD:-change-me-b}
+      POSTGRES_DB: ${DB_B_NAME:-replica}
+    volumes:
+      - db-b-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    networks: [system-b-net]
+
+  # ----------------------------------------------------------------- keycloak
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0
+    command: ["start-dev", "--import-realm"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN:-admin}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin}
+      # Fixed public hostname => `iss` is always http://localhost:8080/realms/taskapp,
+      # whether the token was requested from the browser or from another container.
+      KC_HOSTNAME: ${KEYCLOAK_PUBLIC_URL:-http://localhost:8080}
+      KC_HTTP_ENABLED: "true"
+      KC_HEALTH_ENABLED: "true"
+    volumes:
+      - ./keycloak/realm-export.json:/opt/keycloak/data/import/realm-export.json:ro
+    ports:
+      - "${KEYCLOAK_PORT:-8080}:8080"
+    healthcheck:
+      # no curl in the image: speak HTTP over bash's /dev/tcp to the management port
+      test:
+        - CMD-SHELL
+        - >-
+          exec 3<>/dev/tcp/127.0.0.1/9000 &&
+          printf 'GET /health/ready HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n' >&3 &&
+          grep -q '"status": "UP"' <&3
+      interval: 5s
+      timeout: 5s
+      retries: 40
+      start_period: 20s
+    networks: [system-a-net, system-b-net]
+
+  # -------------------------------------------------------------------- kafka
+  kafka:
+    image: apache/kafka:3.9.0
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093,HOST://:29092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,HOST://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,HOST:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    ports:
+      - "29092:29092"
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 >/dev/null 2>&1"]
+      interval: 5s
+      timeout: 10s
+      retries: 30
+      start_period: 15s
+    networks: [kafka-net]
+
+  kafka-init:
+    image: apache/kafka:3.9.0
+    depends_on:
+      kafka:
+        condition: service_healthy
+    restart: "no"
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - |
+        set -e
+        B=kafka:9092
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server $$B --create --if-not-exists \
+          --topic task-events --partitions 3 --replication-factor 1 \
+          --config retention.ms=-1 --config retention.bytes=-1
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server $$B --create --if-not-exists \
+          --topic task-events.dlq --partitions 1 --replication-factor 1 \
+          --config retention.ms=-1
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server $$B --list
+    networks: [kafka-net]
+
+  # ----------------------------------------------------------------- system A
+  task-api:
+    build:
+      context: .
+      dockerfile: system-a/task-api/Dockerfile
+    environment:
+      <<: *auth-env
+      DB_A_URL: *db-a-url
+    depends_on:
+      db-a: {condition: service_healthy}
+      keycloak: {condition: service_healthy}
+    ports:
+      - "8001:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)"]
+      <<: *py-health
+    networks: [system-a-net]
+
+  outbox-publisher:
+    build:
+      context: .
+      dockerfile: system-a/outbox-publisher/Dockerfile
+    environment:
+      DB_A_URL: *db-a-url
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      EVENTS_TOPIC: task-events
+    depends_on:
+      task-api: {condition: service_healthy}   # task-api owns DB-A migrations
+      kafka-init: {condition: service_completed_successfully}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os,sys,time; sys.exit(0 if time.time()-os.path.getmtime('/tmp/healthy')<60 else 1)"]
+      <<: *py-health
+    restart: unless-stopped
+    networks: [system-a-net, kafka-net]
+
+  # ----------------------------------------------------------------- system B
+  replica-consumer:
+    build:
+      context: .
+      dockerfile: system-b/replica-consumer/Dockerfile
+    environment:
+      DB_B_URL: *db-b-url
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      EVENTS_TOPIC: task-events
+      DLQ_TOPIC: task-events.dlq
+      CONSUMER_GROUP: replica-consumer
+    depends_on:
+      db-b: {condition: service_healthy}
+      kafka-init: {condition: service_completed_successfully}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os,sys,time; sys.exit(0 if time.time()-os.path.getmtime('/tmp/healthy')<60 else 1)"]
+      <<: *py-health
+    restart: unless-stopped
+    stop_grace_period: 15s
+    networks: [system-b-net, kafka-net]
+
+  replica-api:
+    build:
+      context: .
+      dockerfile: system-b/replica-api/Dockerfile
+    environment:
+      <<: *auth-env
+      DB_B_URL: *db-b-url
+    depends_on:
+      db-b: {condition: service_healthy}
+      keycloak: {condition: service_healthy}
+    ports:
+      - "8002:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)"]
+      <<: *py-health
+    networks: [system-b-net]
+
+  # ----------------------------------------------------------------- frontend
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_KEYCLOAK_URL: ${KEYCLOAK_PUBLIC_URL:-http://localhost:8080}
+        VITE_KEYCLOAK_REALM: taskapp
+        VITE_KEYCLOAK_CLIENT_ID: task-frontend
+        VITE_TASK_API_URL: http://localhost:8001
+        VITE_REPLICA_API_URL: http://localhost:8002
+    depends_on:
+      task-api: {condition: service_healthy}
+      replica-api: {condition: service_healthy}
+    ports:
+      - "5173:80"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks: [default]
+
+  # ----------------------------------------------- test / ops tooling (profiles)
+  # `tools` is the ONLY thing attached to both system networks: it exists to run
+  # compare_systems.py and the seed script. Not started by `docker compose up`.
+  tools: &tools
+    profiles: [tools]
+    build:
+      context: .
+      dockerfile: tests/Dockerfile
+    image: task-platform-tools
+    working_dir: /work
+    volumes:
+      - .:/work
+    environment:
+      DB_A_URL: *db-a-url
+      DB_B_URL: *db-b-url
+      TASK_API_URL: http://task-api:8000
+      REPLICA_API_URL: http://replica-api:8000
+      KEYCLOAK_TOKEN_URL: ${KEYCLOAK_INTERNAL_URL:-http://keycloak:8080}/realms/taskapp/protocol/openid-connect/token
+    networks: [system-a-net, system-b-net]
+
+  test-a:
+    <<: *tools
+    profiles: [test]
+    environment:
+      DB_A_URL: *db-a-url
+    networks: [system-a-net]
+
+  test-b:
+    <<: *tools
+    profiles: [test]
+    environment:
+      DB_B_URL: *db-b-url
+    networks: [system-b-net]
+
+networks:
+  system-a-net:
+  system-b-net:
+  kafka-net:
+
+volumes:
+  db-a-data:
+  db-b-data:
+  kafka-data:
