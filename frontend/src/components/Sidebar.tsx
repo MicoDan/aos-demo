@@ -1,6 +1,7 @@
 import { ReactNode } from "react";
 import { logout, username } from "../auth";
-import { IconActivity, IconDashboard, IconLayers, IconLogout, IconTasks } from "./Icons";
+import { Brand } from "./Brand";
+import { IconActivity, IconDashboard, IconLogout, IconTasks } from "./Icons";
 
 export type View = "dashboard" | "tasks" | "activity";
 const NAV: { id: View; label: string; icon: ReactNode }[] = [
@@ -13,10 +14,7 @@ export function Sidebar({ view, open, onNavigate }: { view: View; open: boolean;
   const name = username();
   return (
     <aside className={`sidebar ${open ? "open" : ""}`}>
-      <div className="brand">
-        <span className="brand-mark"><IconLayers /></span>
-        <span className="brand-name">TaskPlatform</span>
-      </div>
+      <Brand />
       <nav className="nav" aria-label="Main">
         <span className="nav-title">Workspace</span>
         {NAV.map((n) => (

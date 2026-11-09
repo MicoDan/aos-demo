@@ -1,0 +1,63 @@
+/* Smart Admin sign-in page.
+   Palette (Rwandan flag): light blue = brand, white = background, green = secondary, yellow = sparing accent. */
+:root {
+  --tp-blue: #00a1de;
+  --tp-yellow: #fad201;
+  --tp-green: #20603d;
+  --tp-primary: #0277b6;
+  --tp-primary-hover: #026297;
+
+  /* PatternFly 5 tokens used by Keycloak's login page */
+  --pf-v5-global--primary-color--100: var(--tp-primary);
+  --pf-v5-global--primary-color--200: var(--tp-primary-hover);
+  --pf-v5-global--active-color--100: var(--tp-primary);
+  --pf-v5-global--link--Color: var(--tp-primary);
+  --pf-v5-global--link--Color--hover: var(--tp-primary-hover);
+  --pf-v5-global--BorderColor--100: #cbd9e4;
+}
+
+/* white page, thin flag-coloured stripe across the top (blue 2px, yellow 1px, green 1px) */
+.login-pf body {
+  background: #ffffff;
+  min-height: 100vh;
+}
+.login-pf body::before {
+  content: "";
+  position: fixed; top: 0; left: 0; right: 0; height: 4px; z-index: 10;
+  background: linear-gradient(to bottom, var(--tp-blue) 0 50%, var(--tp-yellow) 50% 75%, var(--tp-green) 75% 100%);
+}
+
+/* header: logo and application name */
+#kc-header-wrapper {
+  color: #0f1f2e !important;
+  text-transform: none;
+  letter-spacing: -0.01em;
+  font-size: 28px;
+  font-weight: 700;
+}
+#kc-header-wrapper::before {
+  content: "";
+  display: block;
+  width: 84px; height: 92px;
+  margin: 0 auto 14px;
+  background: url("../img/logo.png") center / contain no-repeat;
+}
+
+/* the sign-in card */
+.pf-v5-c-login__main {
+  border: 1px solid #e1eaf1;
+  border-radius: 14px;
+  box-shadow: 0 8px 30px rgba(15, 31, 46, .08);
+  overflow: hidden;
+}
+.pf-v5-c-login__main-header { border-bottom: 0; }
+#kc-page-title { color: #0f1f2e; font-weight: 650; }
+
+/* inputs and buttons */
+.pf-v5-c-form-control:focus-within,
+.pf-v5-c-form-control:focus {
+  --pf-v5-c-form-control--focus--BorderBottomColor: var(--tp-blue);
+}
+.pf-v5-c-button.pf-m-primary { border-radius: 9px; font-weight: 600; }
+.pf-v5-c-button.pf-m-primary:hover { background-color: var(--tp-primary-hover); }
+:focus-visible { outline-color: var(--tp-blue); }

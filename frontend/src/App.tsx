@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Logo } from "./components/Brand";
 import { IconMenu } from "./components/Icons";
 import { Sidebar, View } from "./components/Sidebar";
 import { SyncIndicator } from "./components/SyncIndicator";
@@ -21,7 +22,7 @@ export default function App() {
     window.addEventListener("hashchange", on);
     return () => window.removeEventListener("hashchange", on);
   }, []);
-  useEffect(() => { document.title = `${TITLES[view]} · Task Platform`; }, [view]);
+  useEffect(() => { document.title = `${TITLES[view]} · Smart Admin`; }, [view]);
 
   const go = (v: View) => { window.location.hash = `#/${v}`; setView(v); setMenu(false); };
 
@@ -32,6 +33,7 @@ export default function App() {
       <div className="main">
         <header className="topbar">
           <button className="icon-btn menu-btn" onClick={() => setMenu(true)} aria-label="Open menu"><IconMenu /></button>
+          <span className="topbar-logo"><Logo size={28} /></span>
           <span className="crumb">{TITLES[view]}</span>
           <SyncIndicator />
         </header>

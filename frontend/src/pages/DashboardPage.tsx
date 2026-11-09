@@ -1,4 +1,5 @@
 import { taskApi } from "../api";
+import { SMART_ADMIN } from "../brand";
 import { ActivityPanel } from "../components/ActivityPanel";
 import { StatsPanel } from "../components/StatsPanel";
 import { Avatars, PriorityBadge, SourceTag, StatusBadge, fmtDay } from "../components/ui";
@@ -19,7 +20,7 @@ export function DashboardPage({ goTasks }: { goTasks: () => void }) {
             <div><h2>Latest tasks</h2><SourceTag system="A" /></div>
             <button className="btn sm" onClick={goTasks}>View all</button>
           </header>
-          {error && <p className="alert error">System A error: {error}</p>}
+          {error && <p className="alert error">{SMART_ADMIN} error: {error}</p>}
           {loading && !data && <div className="pad"><div className="skeleton row" /><div className="skeleton row" /><div className="skeleton row" /></div>}
           {data && data.items.length === 0 && <p className="empty-note">No tasks yet.</p>}
           <ul className="mini-list">

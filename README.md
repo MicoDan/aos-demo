@@ -1,42 +1,45 @@
-# Task Platform — two systems kept in sync by Kafka
+# Smart Admin and My Assist — two systems kept in sync by Kafka
+
+> **Naming.** **Smart Admin** is the task app and **My Assist** is the replica & analytics side.
+> Infrastructure identifiers keep their short names so nothing breaks: the folders `system-a/` (Smart Admin) and `system-b/` (My Assist), the Docker networks `system-a-net` / `system-b-net`, and the databases `db-a` / `db-b` (DB-A / DB-B).
 
 A small local platform that demonstrates **two independent systems staying in sync only through Apache Kafka**:
 
-- **System A (task app)** owns the tasks (source of truth): FastAPI Task API + PostgreSQL (DB-A) + a transactional-outbox publisher.
-- **System B (replica & analytics)** has its *own* database (DB-B), never touches DB-A and never calls System A. It builds its copy of the data and an activity log purely from Kafka events.
+- **Smart Admin (task app)** owns the tasks (source of truth): FastAPI Task API + PostgreSQL (DB-A) + a transactional-outbox publisher.
+- **My Assist (replica & analytics)** has its *own* database (DB-B), never touches DB-A and never calls Smart Admin. It builds its copy of the data and an activity log purely from Kafka events.
 - **Keycloak** does SSO (authentication only). **Kafka** does not handle auth; Keycloak does not touch Kafka.
 
 ```mermaid
 flowchart LR
   KC[Keycloak SSO]
   FE[React frontend]
-  subgraph A[System A - system-a-net]
-    API_A[Task API<br/>FastAPI]
-    DBA[(DB-A<br/>tasks + outbox_events)]
+  subgraph SA[Smart Admin]
+    SA_API[Task API<br/>FastAPI]
+    SA_DB[(Smart Admin database<br/>tasks + outbox_events)]
     PUB[Outbox publisher]
   end
   K{{Kafka topic task-events<br/>+ task-events.dlq}}
-  subgraph B[System B - system-b-net]
+  subgraph MA[My Assist]
     CONS[Replica consumer]
-    DBB[(DB-B<br/>tasks_replica + task_activity)]
-    API_B[Replica API<br/>read-only]
+    MA_DB[(My Assist database<br/>tasks_replica + task_activity)]
+    MA_API[Replica API<br/>read-only]
   end
   FE -- login / PKCE --> KC
-  FE -- "JWT: CRUD" --> API_A
-  FE -- "JWT: stats, activity, sync-status" --> API_B
-  API_A -- "1 transaction" --> DBA
-  DBA --> PUB --> K --> CONS --> DBB --> API_B
-  API_A -. JWKS .-> KC
-  API_B -. JWKS .-> KC
+  FE -- "JWT: CRUD" --> SA_API
+  FE -- "JWT: stats, activity, sync-status" --> MA_API
+  SA_API -- "1 transaction" --> SA_DB
+  SA_DB --> PUB --> K --> CONS --> MA_DB --> MA_API
+  SA_API -. JWKS .-> KC
+  MA_API -. JWKS .-> KC
 ```
 
 Separation is enforced structurally, not by convention:
 
-| Network        | Members                                                         |
-|----------------|-----------------------------------------------------------------|
-| `system-a-net` | db-a, task-api, outbox-publisher (+ keycloak, for JWKS)         |
-| `system-b-net` | db-b, replica-consumer, replica-api (+ keycloak, for JWKS)      |
-| `kafka-net`    | kafka, kafka-init, outbox-publisher, replica-consumer           |
+| System      | Network        | Members                                                         |
+|-------------|----------------|-----------------------------------------------------------------|
+| Smart Admin | `system-a-net` | db-a, task-api, outbox-publisher (+ keycloak, for JWKS)         |
+| My Assist   | `system-b-net` | db-b, replica-consumer, replica-api (+ keycloak, for JWKS)      |
+| Kafka       | `kafka-net`    | kafka, kafka-init, outbox-publisher, replica-consumer           |
 
 Each DB has its own user/password. The Task API cannot even resolve `db-b`; the replica containers cannot resolve `db-a`.
 Only the opt-in `tools` container (used by `make compare` / `make seed`) is attached to both system networks.
@@ -52,7 +55,7 @@ docker compose up --build        # or: make up   (detached, waits for health)
 | What               | URL                              |
 |--------------------|----------------------------------|
 | Frontend           | http://localhost:5173            |
-| Task API (System A)| http://localhost:8001/docs       |
+| Task API (Smart Admin)| http://localhost:8001/docs       |
 | Replica API (B)    | http://localhost:8002/docs       |
 | Keycloak           | http://localhost:8080 (admin / admin) |
 | Kafka (from host)  | `localhost:29092`                |
@@ -73,8 +76,8 @@ If host port 8080 is taken, set `KEYCLOAK_PORT=8180` **and** `KEYCLOAK_PUBLIC_UR
 ## Seed, test, compare
 
 ```bash
-make seed            # ~30 tasks via the Task API -> outbox -> Kafka -> System B -> dashboard
-make compare         # compare_systems.py: A and B agree on ids/titles/statuses/versions? (exit 0 = yes)
+make seed            # ~30 tasks via the Task API -> outbox -> Kafka -> My Assist -> dashboard
+make compare         # compare_systems.py: do Smart Admin and My Assist agree on ids/titles/statuses/versions? (exit 0 = yes)
 make test            # pytest: Task API (27), replica consumer (16), replica API (7)
 ```
 
@@ -87,16 +90,16 @@ servers, so they never touch the demo data.
 
 ## Demos
 
-### 1. Kafka outage (System A keeps working)
+### 1. Kafka outage (Smart Admin keeps working)
 ```bash
 docker compose stop kafka
 # in the UI: create / edit tasks -> still works. Indicator turns "Catching up…", stats/activity go stale.
 docker compose exec db-a sh -c 'psql -U $POSTGRES_USER -d $POSTGRES_DB -c "select event_type, published_at from outbox_events order by created_at desc limit 5"'
-docker compose start kafka        # publisher retries with backoff; events flow; B catches up
+docker compose start kafka        # publisher retries with backoff; events flow; My Assist catches up
 make compare
 ```
 
-### 2. System B outage
+### 2. My Assist outage
 ```bash
 docker compose stop replica-consumer
 # make changes: task list works normally; stats + activity go stale
@@ -104,7 +107,7 @@ docker compose start replica-consumer   # resumes from its committed offset; no 
 make compare
 ```
 
-### 3. Rebuild System B from Kafka
+### 3. Rebuild My Assist from Kafka
 ```bash
 make rebuild-replica
 ```
@@ -113,7 +116,7 @@ waits for lag 0, then runs `compare_systems.py`. The topic has `retention.ms=-1`
 
 ## API summary
 
-**System A — Task API** (`/tasks*` need `Authorization: Bearer <jwt>`; others' tasks return 404)
+**Smart Admin — Task API** (`/tasks*` need `Authorization: Bearer <jwt>`; others' tasks return 404)
 `GET /health` · `GET /tasks?status=&limit=&offset=` · `POST /tasks` · `GET|PUT|DELETE /tasks/{id}`
 Statuses: `pending`, `in_progress`, `completed`. Every task has an integer `version` (starts at 1, +1 on every change).
 
@@ -138,10 +141,10 @@ Each task owns its own values. List-type fields are JSONB arrays on the same row
 | `due_date` | date, optional | |
 | `labels` | list of text | |
 
-The fields travel in every event snapshot and are stored on System B's `tasks_replica` row, and `make compare` checks all of them.
+The fields travel in every event snapshot and are stored on My Assist's `tasks_replica` row, and `make compare` checks all of them.
 Events published before these fields existed still replay (missing fields take defaults; `date_issued` falls back to the creation date).
 
-**System B — Replica API** (read-only, scoped to the caller's `sub`)
+**My Assist — Replica API** (read-only, scoped to the caller's `sub`)
 `GET /health` · `GET /stats` · `GET /activity?limit=20` · `GET /sync-status`
 
 ## How consistency works
@@ -152,22 +155,22 @@ Events published before these fields existed still replay (missing fields take d
   (idempotent producer, `acks=all`), waits for delivery reports and only then sets `published_at`. Backs off and
   retries if Kafka is down. Duplicates after a crash are fine: consumers are idempotent.
 - **Events are self-contained**: full task snapshot + `version` (for deletes, the last snapshot at the tombstone version),
-  so System B never queries System A.
+  so My Assist never queries Smart Admin.
 - **Consumer.** Per message, one DB-B transaction: insert `task_activity` (`ON CONFLICT (event_id) DO NOTHING`) and apply
   the event to `tasks_replica`, then commit the Kafka offset synchronously. Upserts apply only if `event.version >
-  row.version`; a `task.deleted` event physically deletes the row from `tasks_replica` (as in System A); nothing is kept.
+  row.version`; a `task.deleted` event physically deletes the row from `tasks_replica` (as in Smart Admin); nothing is kept.
   Because no tombstone remains, a stale create/update for an already-deleted task that is redelivered later would re-create it
   (known trade-off). Malformed messages go to `task-events.dlq` with the reason in headers.
 
 ## Why Kafka here
 
-- **Decoupling.** System A publishes facts about what happened; it doesn't know who consumes them or call anyone.
-- **Independent availability.** If B (or Kafka) is down, A keeps accepting writes; the outbox buffers events. If A is down, B still serves its last known data.
-- **Eventual consistency.** B lags A slightly. The UI makes that visible ("In sync" / "Catching up…") instead of hiding it.
+- **Decoupling.** Smart Admin publishes facts about what happened; it doesn't know who consumes them or call anyone.
+- **Independent availability.** If My Assist (or Kafka) is down, Smart Admin keeps accepting writes; the outbox buffers events. If Smart Admin is down, My Assist still serves its last known data.
+- **Eventual consistency.** My Assist lags Smart Admin slightly. The UI makes that visible ("In sync" / "Catching up…") instead of hiding it.
 - **Idempotent, order-safe consumers.** Kafka guarantees order only per partition/key and delivers at-least-once; the version guard and `event_id` dedup make that safe.
 - **Replay and rebuild.** The log is the history. Wipe DB-B, replay from offset 0, get the same state (`make rebuild-replica`).
-- **Add a consumer without touching A.** A search indexer, notification sender or warehouse loader just subscribes to `task-events`
-  with its own consumer group and its own storage; System A, its DB and the existing consumers don't change.
+- **Add a consumer without touching Smart Admin.** A search indexer, notification sender or warehouse loader just subscribes to `task-events`
+  with its own consumer group and its own storage; Smart Admin, its DB and the existing consumers don't change.
 
 Kafka does not replace the databases (they hold current state and enforce ownership) and does not do authentication.
 
@@ -181,7 +184,7 @@ system-a/task-api/            CRUD, owns DB-A (SQL migrations run on startup)
 system-a/outbox-publisher/    DB-A -> Kafka
 system-b/replica-consumer/    Kafka -> DB-B
 system-b/replica-api/         read-only API over DB-B
-system-b/migrations/          DB-B schema (used by both System B services)
+system-b/migrations/          DB-B schema (used by both My Assist services)
 frontend/                     React + Vite + TS + keycloak-js
 scripts/                      seed_tasks.py, compare_systems.py, rebuild_replica.sh
 tests/                        pytest suites + shared Dockerfile for tests/tools
@@ -191,5 +194,5 @@ tests/                        pytest suites + shared Dockerfile for tests/tools
 - Single-node Kafka, replication factor 1, no auth/TLS on Kafka; Keycloak runs `start-dev` with an in-container H2 database
   (realm is re-imported when the container is recreated). Not production settings.
 - "Completed in the last 7 days" uses the task's `updated_at` (there is no separate `completed_at`).
-- The frontend's sync indicator compares totals and the latest `updated_at` between A and B; it is a good heuristic, not a proof of equality (`make compare` is).
+- The frontend's sync indicator compares totals and the latest `updated_at` between Smart Admin and My Assist; it is a good heuristic, not a proof of equality (`make compare` is).
 - The `[seed]` re-run rule is by title, so editing a seeded task's title makes the next seed re-create it.

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Wipe System B's data and rebuild it purely by replaying Kafka from the beginning.
+# Wipe My Assist's data and rebuild it purely by replaying Kafka from the beginning.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 DC="docker compose"
@@ -31,5 +31,5 @@ for i in $(seq 1 120); do
 done
 sleep 1
 
-echo "==> comparing System A and System B"
+echo "==> comparing Smart Admin and My Assist"
 $DC --profile tools run --rm -T tools python scripts/compare_systems.py

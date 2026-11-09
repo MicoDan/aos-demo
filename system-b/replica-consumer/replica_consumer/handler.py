@@ -42,7 +42,7 @@ UPSERT_SQL = text(f"""
     WHERE tasks_replica.version < EXCLUDED.version
 """)
 
-# deleted: the replica row is physically removed (same as System A). Nothing is kept.
+# deleted: the replica row is physically removed (same as Smart Admin). Nothing is kept.
 REMOVE_SQL = text("DELETE FROM tasks_replica WHERE id = :id")
 
 

@@ -1,6 +1,6 @@
 name: task-platform
 
-# Networks enforce the System A / System B separation:
+# Networks enforce the Smart Admin (system-a) / My Assist (system-b) separation:
 #   system-a-net : db-a, task-api, outbox-publisher (+ keycloak for JWKS)
 #   system-b-net : db-b, replica-consumer, replica-api (+ keycloak for JWKS)
 #   kafka-net    : kafka, kafka-init, outbox-publisher, replica-consumer
@@ -68,6 +68,7 @@ services:
       KC_HEALTH_ENABLED: "true"
     volumes:
       - ./keycloak/realm-export.json:/opt/keycloak/data/import/realm-export.json:ro
+      - ./keycloak/themes/taskplatform:/opt/keycloak/themes/taskplatform:ro   # Smart Admin sign-in theme (logo + colours)
     ports:
       - "${KEYCLOAK_PORT:-8080}:8080"
     healthcheck:
@@ -133,7 +134,7 @@ services:
         /opt/kafka/bin/kafka-topics.sh --bootstrap-server $$B --list
     networks: [kafka-net]
 
-  # ----------------------------------------------------------------- system A
+  # ------------------------------------------------------------ Smart Admin (system-a)
   task-api:
     build:
       context: .
@@ -168,7 +169,7 @@ services:
     restart: unless-stopped
     networks: [system-a-net, kafka-net]
 
-  # ----------------------------------------------------------------- system B
+  # -------------------------------------------------------------- My Assist (system-b)
   replica-consumer:
     build:
       context: .

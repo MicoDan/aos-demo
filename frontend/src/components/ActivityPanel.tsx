@@ -1,4 +1,5 @@
 import { Activity, replicaApi } from "../api";
+import { MY_ASSIST } from "../brand";
 import { usePolling } from "../usePolling";
 import { SourceTag, timeAgo } from "./ui";
 
@@ -20,7 +21,7 @@ export function ActivityPanel({ limit = 8, title = "Recent activity" }: { limit?
         <div><h2>{title}</h2><SourceTag system="B" /></div>
       </header>
       {loading && !data && <div className="pad"><div className="skeleton row" /><div className="skeleton row" /><div className="skeleton row" /></div>}
-      {error && <p className="alert error">{data ? "Stale — " : ""}System B error: {error}</p>}
+      {error && <p className="alert error">{data ? "Stale — " : ""}{MY_ASSIST} error: {error}</p>}
       {data && data.length === 0 && <p className="empty-note">No activity yet.</p>}
       <ul className="feed">
         {data?.map((a) => (

@@ -32,7 +32,7 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="Task API (System A)", lifespan=lifespan)
+app = FastAPI(title="Task API (Smart Admin)", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[os.environ.get("CORS_ORIGIN", "http://localhost:5173")],

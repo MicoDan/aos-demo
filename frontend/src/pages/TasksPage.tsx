@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Status, Task, TaskInput, taskApi } from "../api";
+import { MY_ASSIST, SMART_ADMIN } from "../brand";
 import { IconInbox, IconPlus } from "../components/Icons";
 import { TaskDrawer } from "../components/TaskDrawer";
 import { TaskModal } from "../components/TaskModal";
@@ -65,7 +66,7 @@ export function TasksPage() {
           {data && <span className="muted count">{data.total} {data.total === 1 ? "task" : "tasks"}</span>}
         </div>
 
-        {error && <p className="alert error">System A error: {error}</p>}
+        {error && <p className="alert error">{SMART_ADMIN} error: {error}</p>}
         {actionError && <p className="alert error" onClick={() => setActionError(null)}>{actionError} (click to dismiss)</p>}
 
         <div className="table-wrap">
@@ -135,7 +136,7 @@ function DeleteConfirm({ task, onCancel, onConfirm }: { task: Task; onCancel: ()
     <div className="overlay" onClick={onCancel}>
       <div className="modal confirm" onClick={(e) => e.stopPropagation()}>
         <h2>Delete task?</h2>
-        <p>“{task.title}” will be permanently deleted from System A, and removed from System B once the event syncs.</p>
+        <p>“{task.title}” will be permanently deleted from {SMART_ADMIN}, and removed from {MY_ASSIST} once the event syncs.</p>
         <div className="modal-foot plain">
           <button className="btn" onClick={onCancel}>Cancel</button>
           <button className="btn danger solid" onClick={onConfirm}>Delete</button>
@@ -145,7 +146,7 @@ function DeleteConfirm({ task, onCancel, onConfirm }: { task: Task; onCancel: ()
   );
 }
 
-/** Looks up the parent task's title (a task read from System A by id). */
+/** Looks up the parent task's title (a task read from Smart Admin by id). */
 function useParentTitle(task: Task | null): string | null {
   const id = task?.parent_task ?? null;
   const { data } = usePolling(async () => (id ? (await taskApi.get(id)).title : null), 60000, [id]);

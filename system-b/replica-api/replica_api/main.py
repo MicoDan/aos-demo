@@ -21,14 +21,14 @@ engine = create_engine(os.environ["DB_B_URL"], pool_pre_ping=True)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # same idempotent, lock-protected migrations as the consumer (both are System B)
+    # same idempotent, lock-protected migrations as the consumer (both are My Assist)
     run_migrations(engine, Path(os.environ.get("MIGRATIONS_DIR", "/app/migrations")))
     if not hasattr(app.state, "validator"):
         app.state.validator = validator_from_env()
     yield
 
 
-app = FastAPI(title="Replica API (System B, read-only)", lifespan=lifespan)
+app = FastAPI(title="Replica API (My Assist, read-only)", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[os.environ.get("CORS_ORIGIN", "http://localhost:5173")],

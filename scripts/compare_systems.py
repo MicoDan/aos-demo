@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compare System A (tasks) with System B (tasks_replica) for all live tasks.
+"""Compare Smart Admin (tasks) with My Assist (tasks_replica) for all live tasks.
 
 This is a TEST TOOL: it is the only thing allowed to connect to both databases.
 Exit code 0 only if ids, titles, statuses and versions all agree.
@@ -31,7 +31,7 @@ def main() -> int:
     only_a = sorted(set(a) - set(b))
     only_b = sorted(set(b) - set(a))
     diff = sorted(i for i in set(a) & set(b) if a[i] != b[i])
-    print(f"System A live tasks: {len(a)}   System B live tasks: {len(b)}")
+    print(f"Smart Admin live tasks: {len(a)}   My Assist live tasks: {len(b)}")
     for i in only_a:
         print(f"  MISSING in B: {i} {a[i]}")
     for i in only_b:
@@ -41,7 +41,7 @@ def main() -> int:
     if only_a or only_b or diff:
         print("RESULT: DISAGREE")
         return 1
-    print("RESULT: A and B agree (ids, version and all 14 task fields)")
+    print("RESULT: Smart Admin and My Assist agree (ids, version and all 14 task fields)")
     return 0
 
 

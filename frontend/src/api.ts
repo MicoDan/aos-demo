@@ -104,7 +104,7 @@ async function request<T>(base: string, path: string, init: RequestInit = {}, re
   return res.status === 204 ? (undefined as T) : ((await res.json()) as T);
 }
 
-// System A (source of truth)
+// Smart Admin (source of truth)
 const A = config.taskApi;
 export const taskApi = {
   list: (status: Status | "", limit = 50, offset = 0) =>
@@ -116,7 +116,7 @@ export const taskApi = {
   remove: (id: string) => request<void>(A, `/tasks/${id}`, { method: "DELETE" }),
 };
 
-// System B (replica, fed by Kafka)
+// My Assist (replica, fed by Kafka)
 const B = config.replicaApi;
 export const replicaApi = {
   stats: () => request<Stats>(B, "/stats"),

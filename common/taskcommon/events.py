@@ -1,6 +1,6 @@
-"""Event schema shared by the outbox writer (System A) and the replica consumer (System B).
+"""Event schema shared by the outbox writer (Smart Admin) and the replica consumer (My Assist).
 
-Events carry a full task snapshot so System B never needs to query System A.
+Events carry a full task snapshot so My Assist never needs to query Smart Admin.
 """
 import uuid
 from datetime import date, datetime, timezone

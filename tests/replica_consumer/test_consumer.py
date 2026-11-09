@@ -73,7 +73,7 @@ def test_delete_removes_replica_row(engine):
     send(engine, ev("task.created", 1, title="a"))
     assert row(engine) is not None
     send(engine, ev("task.deleted", 2, title="a"))
-    assert row(engine) is None                     # physically gone, like System A
+    assert row(engine) is None                     # physically gone, like Smart Admin
     assert count(engine, "tasks_replica") == 0
     assert count(engine, "task_activity") == 2     # history is still logged
 

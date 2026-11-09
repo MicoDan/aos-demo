@@ -1,4 +1,5 @@
 import { Priority, Status } from "../api";
+import { MY_ASSIST, SMART_ADMIN } from "../brand";
 
 export const STATUS_LABEL: Record<Status, string> = { pending: "Pending", in_progress: "In progress", completed: "Completed" };
 export const PRIORITY_LABEL: Record<Priority, string> = { low: "Low", medium: "Medium", high: "High", critical: "Critical" };
@@ -11,11 +12,11 @@ export function PriorityBadge({ priority }: { priority: Priority }) {
 }
 export function SourceTag({ system }: { system: "A" | "B" }) {
   return system === "A"
-    ? <span className="source a">Live from System A (source of truth)</span>
-    : <span className="source b">From System B (replica, updated via Kafka)</span>;
+    ? <span className="source a">Live from {SMART_ADMIN} (source of truth)</span>
+    : <span className="source b">From {MY_ASSIST} (replica, updated via Kafka)</span>;
 }
 
-const COLORS = ["#dbeafe", "#fce7f3", "#dcfce7", "#fef3c7", "#e0e7ff", "#ffedd5", "#cffafe"];
+const COLORS = ["#d6effa", "#dcf2e4", "#fdf3c4", "#e3edf4", "#cfe9dd", "#e9f5fc", "#f3ecc6"];
 export function Avatar({ name }: { name: string }) {
   const c = COLORS[[...name].reduce((a, ch) => a + ch.charCodeAt(0), 0) % COLORS.length];
   return <span className="avatar" style={{ background: c }} title={name}>{name.trim().charAt(0).toUpperCase()}</span>;

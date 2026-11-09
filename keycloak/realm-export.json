@@ -1,5 +1,7 @@
 {
   "realm": "taskapp",
+  "displayName": "Smart Admin",
+  "loginTheme": "taskplatform",
   "enabled": true,
   "sslRequired": "none",
   "registrationAllowed": false,
